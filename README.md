@@ -1,1 +1,5 @@
-# ai-daolun-shuati
+# 人工智能导论 · 智能刷题与错题回滚系统
+
+静态单页刷题站，覆盖 9 个章节、共 117 道题。
+
+进度只保存在访客浏览器的 localStorage 中，键名为 `ai_intro_quiz_v1`。
