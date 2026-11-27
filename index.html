@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人工智能导论 · 智能刷题与错题回滚系统</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body {
+    font-family: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #F6F7FB;
+    color: #0F172A;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .font-mono-num { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .fade-up { animation: fadeUp 0.2s ease-out; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .opt-card { transition: all 0.15s ease; }
+  .opt-card:hover:not(:disabled) { border-color: #6366F1; background-color: #EEF2FF; }
+  .opt-card:active:not(:disabled) { transform: scale(0.992); }
+</style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+<!-- Sticky Top Bar -->
+<header class="sticky top-0 z-30 bg-white/88 backdrop-blur-md border-b border-slate-200/80">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2">
+    <button id="brandBtn" type="button" class="flex items-center gap-2.5 text-left group min-w-0">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white flex items-center justify-center font-bold text-sm shadow-sm shrink-0 group-hover:opacity-95 transition">AI</div>
+      <div class="truncate">
+        <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight truncate">人工智能导论 · 刷题库</div>
+        <div class="text-xs text-slate-500 hidden sm:block">9 章 117 题 · 判断/单选/多选 · 支持错题自动回滚</div>
+      </div>
+    </button>
+
+    <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+      <button id="topWrongBtn" type="button" class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200/80 transition">
+        <span>错题本</span>
+        <span id="topWrongCount" class="px-1.5 py-0.5 rounded-md bg-rose-600 text-white text-xs font-mono-num">0</span>
+      </button>
+      <button id="topFavBtn" type="button" class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/80 transition">
+        <span class="hidden sm:inline">收藏夹</span>
+        <span class="sm:hidden">★</span>
+        <span id="topFavCount" class="px-1.5 py-0.5 rounded-md bg-amber-500 text-white text-xs font-mono-num">0</span>
+      </button>
+      <button id="openResetBtn" type="button" class="px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition">
+        重置
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ==================== VIEW 1: HOME ==================== -->
+  <section id="homeView" class="space-y-6 fade-up">
+
+    <!-- Hero Dashboard Card -->
+    <div class="bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-7 shadow-xs space-y-5">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div class="space-y-1.5">
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold">
+            <span>🔄 内置错题实时回滚机制</span>
+          </div>
+          <h1 class="text-xl sm:text-2xl font-bold text-slate-900">选择章节或题型开始刷题</h1>
+          <p class="text-xs sm:text-sm text-slate-500">做错的题会自动按你设定的间隔重新插回队列，直到彻底答对才放行。</p>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2.5 sm:gap-3 shrink-0">
+          <div class="rounded-2xl bg-slate-50 border border-slate-200/70 px-3.5 py-3 text-center">
+            <div id="statDone" class="text-lg sm:text-2xl font-bold text-indigo-600 font-mono-num">0</div>
+            <div class="text-[11px] sm:text-xs text-slate-500 mt-0.5">已刷题数</div>
+          </div>
+          <div class="rounded-2xl bg-slate-50 border border-slate-200/70 px-3.5 py-3 text-center">
+            <div id="statAcc" class="text-lg sm:text-2xl font-bold text-emerald-600 font-mono-num">0%</div>
+            <div class="text-[11px] sm:text-xs text-slate-500 mt-0.5">总正确率</div>
+          </div>
+          <div class="rounded-2xl bg-slate-50 border border-slate-200/70 px-3.5 py-3 text-center">
+            <div id="statRollbackFixed" class="text-lg sm:text-2xl font-bold text-amber-600 font-mono-num">0</div>
+            <div class="text-[11px] sm:text-xs text-slate-500 mt-0.5">回滚攻克</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rollback & Mode Settings Bar -->
+      <div class="pt-5 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Left: Rollback Settings -->
+        <div class="rounded-2xl bg-amber-50/70 border border-amber-200/80 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input id="rollbackToggle" type="checkbox" class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500">
+            <span class="text-xs sm:text-sm font-bold text-amber-950">🔄 开启错题自动回滚</span>
+          </label>
+          <div id="rollbackGapWrap" class="inline-flex items-center gap-1.5 text-xs">
+            <span class="text-amber-800">重现间隔：</span>
+            <select id="rollbackGapSelect" class="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-950 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <option value="2">2 题后</option>
+              <option value="3" selected>3 题后</option>
+              <option value="5">5 题后</option>
+              <option value="999">本组末尾</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Right: Mode & Shuffle -->
+        <div class="rounded-2xl bg-slate-50 border border-slate-200/80 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
+          <div class="inline-flex rounded-xl bg-slate-200/70 p-0.5 text-xs" role="group">
+            <button type="button" data-mode="practice" class="mode-btn px-2.5 py-1.5 rounded-lg font-semibold transition">刷题模式</button>
+            <button type="button" data-mode="study" class="mode-btn px-2.5 py-1.5 rounded-lg font-semibold transition">背题模式</button>
+            <button type="button" data-mode="exam" class="mode-btn px-2.5 py-1.5 rounded-lg font-semibold transition">模拟交卷</button>
+          </div>
+          <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 cursor-pointer select-none">
+            <input id="shuffleToggle" type="checkbox" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500">
+            <span>随机乱序</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Filter Type + Search + Quick Start -->
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="inline-flex flex-wrap rounded-xl bg-slate-100 p-1 text-xs sm:text-sm" role="group">
+          <button type="button" data-qtype="all" class="qtype-btn px-3 py-1.5 rounded-lg font-semibold transition">全部题型 (117)</button>
+          <button type="button" data-qtype="judge" class="qtype-btn px-3 py-1.5 rounded-lg font-semibold transition">判断 (60)</button>
+          <button type="button" data-qtype="single" class="qtype-btn px-3 py-1.5 rounded-lg font-semibold transition">单选 (26)</button>
+          <button type="button" data-qtype="multi" class="qtype-btn px-3 py-1.5 rounded-lg font-semibold transition">多选 (31)</button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <input id="searchInput" type="search" placeholder="搜索题目/解析关键词..." class="flex-1 sm:w-48 px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <button id="startAllBtn" type="button" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold transition shrink-0">
+            顺序全刷
+          </button>
+          <button id="mock20Btn" type="button" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition shrink-0">
+            随机 20 题
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search Results Panel -->
+    <div id="searchPanel" class="hidden bg-white rounded-2xl border border-indigo-200 p-4 sm:p-5 shadow-xs space-y-3">
+      <div class="flex items-center justify-between gap-2">
+        <h2 id="searchTitle" class="font-bold text-slate-900 text-sm sm:text-base">搜索结果</h2>
+        <button id="quizSearchBtn" type="button" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">刷这组搜索题</button>
+      </div>
+      <div id="searchList" class="space-y-1.5 max-h-56 overflow-y-auto text-xs sm:text-sm"></div>
+    </div>
+
+    <!-- 9 Chapters Grid -->
+    <div id="chaptersGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  </section>
+
+  <!-- ==================== VIEW 2: QUIZ WORKSPACE (Desktop 2-col, Mobile 1-col) ==================== -->
+  <section id="quizView" class="hidden fade-up pb-20 lg:pb-0">
+    <div class="flex items-center justify-between gap-3 mb-4">
+      <button id="backHomeBtn" type="button" class="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-indigo-600 transition">
+        <span>← 返回章节大厅</span>
+      </button>
+      <div class="flex items-center gap-2">
+        <span id="quizModePill" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/80">刷题模式</span>
+        <span id="quizRollbackPill" class="hidden px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">🔄 回滚开启</span>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <!-- LEFT / MAIN COLUMN: Question Card -->
+      <div class="lg:col-span-8 space-y-4">
+        <!-- Progress Header Card -->
+        <div class="bg-white rounded-2xl border border-slate-200/90 px-4 sm:px-5 py-3.5 shadow-xs">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div id="sessionTitle" class="font-bold text-slate-900 text-sm sm:text-base truncate">第一章</div>
+            <div class="flex items-center gap-2 shrink-0">
+              <span id="pendingRollbackBadge" class="hidden px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-xs font-semibold font-mono-num">待回滚 0</span>
+              <span id="progressCounter" class="font-mono-num text-sm font-bold text-indigo-600">1 / 10</span>
+            </div>
+          </div>
+          <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div id="progressBar" class="h-full bg-indigo-600 rounded-full transition-all duration-300" style="width:10%"></div>
+          </div>
+        </div>
+
+        <!-- Question Body Card -->
+        <div class="bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-7 shadow-xs space-y-5">
+          <!-- Meta tags -->
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="qTypeBadge" class="px-2.5 py-0.5 rounded-lg text-xs font-bold">单选题</span>
+              <span id="qChapterBadge" class="px-2.5 py-0.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600">第一章</span>
+              <span id="qRollbackBadge" class="hidden px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">🔄 错题回滚重练</span>
+            </div>
+            <button id="favBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-amber-50 hover:text-amber-700 transition">
+              <span id="favIcon">☆</span><span id="favText">收藏</span>
+            </button>
+          </div>
+
+          <!-- Stem -->
+          <div id="qStem" class="text-base sm:text-lg font-semibold text-slate-900 leading-relaxed"></div>
+
+          <!-- Options Container -->
+          <div id="qOptions" class="space-y-2.5"></div>
+
+          <!-- Multi-select Submit Button -->
+          <button id="submitMultiBtn" type="button" class="hidden w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm sm:text-base shadow-sm transition">
+            确认提交多选答案
+          </button>
+
+          <!-- Explanation Box -->
+          <div id="expCard" class="hidden rounded-2xl border p-4 sm:p-5 space-y-2 fade-up">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div id="expHeadline" class="font-bold text-sm"></div>
+              <span id="expCorrectTag" class="font-mono-num text-xs font-bold px-2.5 py-0.5 rounded-lg bg-white/85"></span>
+            </div>
+            <p id="expBody" class="text-xs sm:text-sm text-slate-700 leading-relaxed"></p>
+            <div id="expRollbackNote" class="hidden pt-2 border-t border-rose-200/70 text-xs font-semibold text-amber-800 flex items-center justify-between gap-2">
+              <span id="expRollbackText"></span>
+            </div>
+          </div>
+
+          <!-- Desktop Footer Controls -->
+          <div class="hidden lg:flex items-center justify-between pt-3 border-t border-slate-100">
+            <button id="deskPrevBtn" type="button" class="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-35 transition">
+              ← 上一题
+            </button>
+            <div class="flex items-center gap-2">
+              <button id="deskManualRollbackBtn" type="button" class="px-3.5 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 text-xs font-semibold transition" title="手动将本题加入回滚队列，稍后再练一遍">
+                🔄 手动回滚本题
+              </button>
+              <button id="deskNextBtn" type="button" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition">
+                下一题 →
+              </button>
+              <button id="deskSubmitExamBtn" type="button" class="hidden px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition">
+                交卷看成绩
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="hidden lg:block text-center text-xs text-slate-400">
+          键盘快捷键：判断题按 <kbd class="px-1.5 py-0.5 bg-white border border-slate-200 rounded">T</kbd>/<kbd class="px-1.5 py-0.5 bg-white border border-slate-200 rounded">F</kbd>，选择题按 <kbd class="px-1.5 py-0.5 bg-white border border-slate-200 rounded">A</kbd>-<kbd class="px-1.5 py-0.5 bg-white border border-slate-200 rounded">E</kbd>，多选按 <kbd class="px-1.5 py-0.5 bg-white border border-slate-200 rounded">Enter</kbd> 提交，方向键 <kbd class="px-1.5 py-0.5 bg-white border border-slate-200 rounded">←</kbd>/<kbd class="px-1.5 py-0.5 bg-white border border-slate-200 rounded">→</kbd> 切题
+        </div>
+      </div>
+
+      <!-- RIGHT SIDEBAR (Desktop Sticky Panel: Rollback Queue + Sheet) -->
+      <aside class="hidden lg:block lg:col-span-4 space-y-4 sticky top-20">
+        <!-- Live Rollback Queue Card -->
+        <div class="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-slate-900 text-sm">🔄 实时错题回滚队列</h3>
+            <span id="deskRollbackCount" class="font-mono-num text-xs font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900">0 题</span>
+          </div>
+          <div id="deskRollbackList" class="space-y-1.5 text-xs text-slate-600 max-h-40 overflow-y-auto"></div>
+        </div>
+
+        <!-- Question Sheet Card -->
+        <div class="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-slate-900 text-sm">本轮答题卡</h3>
+            <span class="text-[11px] text-slate-400">点击题号跳转</span>
+          </div>
+          <div id="deskSheetGrid" class="grid grid-cols-6 gap-1.5 max-h-72 overflow-y-auto p-0.5"></div>
+          <div class="flex flex-wrap gap-2.5 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+            <span class="inline-flex items-center gap-1"><i class="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block"></i>答对</span>
+            <span class="inline-flex items-center gap-1"><i class="w-2.5 h-2.5 rounded-xs bg-rose-500 inline-block"></i>答错</span>
+            <span class="inline-flex items-center gap-1"><i class="w-2.5 h-2.5 rounded-xs bg-amber-400 inline-block"></i>回滚题</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Mobile Sticky Bottom Action Bar -->
+    <div class="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-3 py-2.5 flex items-center gap-2">
+      <button id="mobPrevBtn" type="button" class="h-11 px-3.5 rounded-xl border border-slate-200 text-slate-700 font-semibold text-xs disabled:opacity-35 shrink-0">
+        ← 上题
+      </button>
+      <button id="mobSheetBtn" type="button" class="h-11 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-semibold text-xs shrink-0 flex items-center gap-1">
+        <span>题卡/回滚</span>
+        <span id="mobRollbackDot" class="hidden px-1.5 py-0.5 rounded bg-amber-500 text-white text-[10px] font-mono-num">0</span>
+      </button>
+      <button id="mobNextBtn" type="button" class="flex-1 h-11 rounded-xl bg-indigo-600 text-white font-semibold text-sm shadow-sm">
+        下一题 →
+      </button>
+      <button id="mobSubmitExamBtn" type="button" class="hidden flex-1 h-11 rounded-xl bg-emerald-600 text-white font-semibold text-sm shadow-sm">
+        交卷看成绩
+      </button>
+    </div>
+  </section>
+
+  <!-- ==================== VIEW 3: RESULT SUMMARY ==================== -->
+  <section id="resultView" class="hidden max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6 fade-up">
+    <div class="text-center space-y-2">
+      <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700">本轮训练完成</span>
+      <h2 id="resTitle" class="text-xl sm:text-2xl font-bold text-slate-900">成绩报告</h2>
+      <div id="resPct" class="text-5xl font-bold text-indigo-600 font-mono-num pt-2">0%</div>
+      <p id="resSub" class="text-xs sm:text-sm text-slate-500"></p>
+    </div>
+
+    <div id="resWrongList" class="space-y-3 max-h-96 overflow-y-auto border-t border-b border-slate-100 py-4"></div>
+
+    <div class="flex flex-wrap items-center justify-center gap-2.5">
+      <button id="resRetryWrongBtn" type="button" class="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold shadow-sm transition">
+        🔄 回滚重刷本轮错题
+      </button>
+      <button id="resRetryAllBtn" type="button" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition">
+        再刷一遍本组
+      </button>
+      <button id="resHomeBtn" type="button" class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-semibold transition">
+        返回章节大厅
+      </button>
+    </div>
+  </section>
+
+</main>
+
+<!-- Mobile Bottom Sheet Modal for Question Navigator & Rollback Queue -->
+<div id="mobSheetModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-[1px] flex items-end">
+  <div class="bg-white w-full rounded-t-3xl p-5 max-h-[80vh] flex flex-col space-y-4">
+    <div class="flex items-center justify-between">
+      <div class="font-bold text-slate-900">答题卡与错题回滚队列</div>
+      <div class="flex items-center gap-2">
+        <button id="mobManualRollbackBtn" type="button" class="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 text-xs font-semibold">🔄 手动回滚当前题</button>
+        <button id="closeMobSheetBtn" type="button" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold">✕</button>
+      </div>
+    </div>
+    <div id="mobRollbackInfo" class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5"></div>
+    <div id="mobSheetGrid" class="grid grid-cols-6 sm:grid-cols-8 gap-2 overflow-y-auto py-1"></div>
+  </div>
+</div>
+
+<!-- Reset Confirmation Modal -->
+<div id="resetModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-[1px] flex items-center justify-center p-4">
+  <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-xl space-y-4">
+    <h3 class="text-lg font-bold text-slate-900">重置所有刷题记录？</h3>
+    <p class="text-sm text-slate-600">将清空已刷进度、正确率、错题本、收藏夹及回滚攻克计数，便于重新开始一轮复习。</p>
+    <div class="flex justify-end gap-2 pt-2">
+      <button id="cancelResetBtn" type="button" class="px-4 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700">取消</button>
+      <button id="confirmResetBtn" type="button" class="px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold">确认重置</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl bg-slate-900/95 text-white text-xs sm:text-sm font-medium shadow-lg whitespace-nowrap max-w-[92vw] truncate"></div>
+
+<script>
+const DB = {"chapters": [{"id": 1, "name": "第一章 人工智能概述", "short": "AI 概述", "desc": "发展历程、达特茅斯会议、三大研究流派与浪潮"}, {"id": 2, "name": "第二章 脑与认知基础（视觉机制）", "short": "脑与视觉", "desc": "感受野、简单/复杂细胞、What/Where 通路、全或无原则"}, {"id": 3, "name": "第三章 知识工程与知识图谱", "short": "知识图谱", "desc": "三元组、属性图、描述逻辑、KBQA、LLM、CoT 与 RAG"}, {"id": 4, "name": "第四章 机器学习", "short": "机器学习", "desc": "监督/无监督学习、决策树、SVM、集成学习、K-means 聚类"}, {"id": 5, "name": "第五章 深度学习与大模型（含强化学习）", "short": "深度学习", "desc": "非线性泛化、强化学习、GAN、Transformer、GPT、LoRA、CLIP"}, {"id": 6, "name": "第六章 语音信息处理", "short": "语音处理", "desc": "计算机听觉、语音分离、统计参数合成、N-gram 与语音大模型"}, {"id": 7, "name": "第七章 自然语言处理", "short": "自然语言", "desc": "词法/句法/语义/语用分析、词表示、语言理解与生成"}, {"id": 8, "name": "第八章 类脑智能与神经网络", "short": "类脑与神经", "desc": "CNN 卷积/池化、RNN 序列记忆、脑机接口 BCI 与混合智能"}, {"id": 9, "name": "第九章 机器人技术", "short": "机器人技术", "desc": "闭环伺服控制、传感器、SLAM 导航与机器人系统构成"}], "questions": [{"ch": 1, "type": "judge", "stem": "行为主义认为，人工智能应基于感知与行动，让机器在与环境的交互中学习并优化行为。", "ans": "T", "exp": "正确。行为主义（又称进化主义或控制论学派）强调感知—行动循环，主张智能体在与环境的交互中自适应学习。", "id": 1}, {"ch": 1, "type": "judge", "stem": "1956 年，提出了 Artificial Intelligence 这一概念，被视为人工智能学科的诞生。", "ans": "T", "exp": "正确。1956 年夏季的达特茅斯会议上，约翰·麦卡锡首次正式提出 Artificial Intelligence（人工智能）这一术语，标志着 AI 学科诞生。", "id": 2}, {"ch": 1, "type": "judge", "stem": "行为主义主要的理论基础是控制论。", "ans": "T", "exp": "正确。行为主义学派以控制论和感知—动作型控制系统为核心理论基础。", "id": 3}, {"ch": 1, "type": "judge", "stem": "人工智能极大推动了人类社会经济的发展和进步，对社会有百利而无一害，可以大力推动。", "ans": "T", "exp": "按原题库参考答案判定为正确（注：实际讨论中 AI 也存在隐私、伦理与安全等挑战，考试请以本题库原答案为准）。", "id": 4}, {"ch": 1, "type": "judge", "stem": "1965 年，提出了 Artificial Intelligence 这一概念，被视为人工智能学科的诞生。", "ans": "F", "exp": "错误。人工智能诞生于 1956 年的达特茅斯会议，而非 1965 年。", "id": 5}, {"ch": 1, "type": "single", "stem": "人工智能的孕育期是（ ）。", "opts": {"A": "1943 年 - 1955 年", "B": "1943 年 - 1986 年", "C": "1956 年 - 1969 年", "D": "1956 年 - 1986 年"}, "ans": ["A"], "exp": "选 A。1943 年麦卡洛克与皮茨提出 MP 神经元模型，至 1955 年达特茅斯会议前夕为人工智能的孕育期。", "id": 6}, {"ch": 1, "type": "multi", "stem": "人工智能的主要研究流派包括（ ）。", "opts": {"A": "实用主义学派", "B": "行为主义学派", "C": "连接主义学派", "D": "符号主义学派"}, "ans": ["B", "C", "D"], "exp": "选 BCD。人工智能的三大主要流派通常指：符号主义（Symbolism）、连接主义（Connectionism）、行为主义（Actionism）。实用主义并非三大主流流派之一。", "id": 7}, {"ch": 1, "type": "single", "stem": "人工智能的元年是（ ）。", "opts": {"A": "1956 年", "B": "1969 年", "C": "1943 年"}, "ans": ["A"], "exp": "选 A。1956 年达特茅斯会议标志着人工智能正式作为独立学科诞生，被称为人工智能元年。", "id": 8}, {"ch": 1, "type": "single", "stem": "人工智能的第二波高潮中得到迅速发展的是（ ）。", "opts": {"A": "神经网络", "B": "机器人", "C": "专家系统", "D": "深度学习"}, "ans": ["C"], "exp": "选 C。人工智能发展的第二波浪潮（约 1980 年代）主要由“专家系统”的商业化应用推动。", "id": 9}, {"ch": 2, "type": "judge", "stem": "视觉系统具有非常复杂的层次结构，层次越深，感受野越大。", "ans": "T", "exp": "正确。感受野（Receptive Field）指神经元对视觉空间的响应区域。随着层级深入，神经元整合的信息更多，其对应的视野范围（感受野）也越大。", "id": 10}, {"ch": 2, "type": "judge", "stem": "人类视觉系统和照相机的区别是照相机的图片不包含整个视野。", "ans": "F", "exp": "错误。人类视觉系统具有主动注意、层级特征提取和认知理解机制，而照相机仅是被动记录光强像素，并非“不包含整个视野”的区别。", "id": 11}, {"ch": 2, "type": "judge", "stem": "视觉系统中复杂细胞比简单细胞的感受野大。", "ans": "T", "exp": "正确。简单细胞主要对特定方向的边缘敏感，感受野较小；复杂细胞整合了多个简单细胞的输入，具有更大的感受野，且对位置具有一定的不变性。", "id": 12}, {"ch": 2, "type": "judge", "stem": "大脑视觉信息处理通路中，what 通路用于空间定位，处理视觉空间运动信息。", "ans": "F", "exp": "错误。大脑皮层视觉通路分为腹侧通路（Ventral stream，即“What”通路）和背侧通路（Dorsal stream，即“Where”通路）。What 通路负责识别物体（是什么），Where 通路负责空间定位和运动（在哪里）。题目描述反了。", "id": 13}, {"ch": 2, "type": "judge", "stem": "人类智能的产生源自我们拥有一个神奇的大脑。", "ans": "T", "exp": "正确。大脑及其庞大的神经网络结构是人类智能产生的生理基础。", "id": 14}, {"ch": 2, "type": "judge", "stem": "神经细胞的电脉冲传递遵循“全或无”的原则。", "ans": "T", "exp": "正确。神经元动作电位要么达到阈值完全发放（1），要么不发放（0），遵循“全或无”原则。", "id": 15}, {"ch": 2, "type": "multi", "stem": "人脑由（ ）组成。", "opts": {"A": "小脑", "B": "脑干", "C": "大脑"}, "ans": ["A", "B", "C"], "exp": "选 ABC。人脑主要由大脑、小脑和脑干三大部分组成。", "id": 16}, {"ch": 2, "type": "single", "stem": "神经细胞的电脉冲传递遵循（ ）的原则。", "opts": {"A": "1 或者 0", "B": "全 1", "C": "全 0"}, "ans": ["A"], "exp": "选 A。“全或无”原则（All-or-None Law）指神经元要么发放动作电位（1），要么不发放（0），信号强度不通过电位大小来编码，而是通过发放频率编码。", "id": 17}, {"ch": 2, "type": "single", "stem": "视觉通路中存在 what 通路和 where 通路，体现了视觉系统的什么机制？", "opts": {"A": "并行分布式处理机制", "B": "网络化处理机制", "C": "层级处理机制"}, "ans": ["A"], "exp": "选 A。What 通路和 Where 通路同时工作，分别处理不同的信息特征，体现了大脑的“并行分布式处理”机制。", "id": 18}, {"ch": 3, "type": "judge", "stem": "三元组（triple）是知识的最小单元，知识图谱是三元组的集合。", "ans": "T", "exp": "正确。知识图谱通常以（头实体，关系，尾实体）的三元组形式存储结构化知识。", "id": 19}, {"ch": 3, "type": "judge", "stem": "在知识图谱中，节点表示实体，边表示关系。", "ans": "T", "exp": "正确。知识图谱本质上是一种语义网络图，节点代表实体/概念，有向边代表实体之间的关系。", "id": 20}, {"ch": 3, "type": "judge", "stem": "图灵测试不是通过问答系统进行的。", "ans": "F", "exp": "错误。图灵测试主要通过人与机器进行自然语言对话（问答）来判断机器是否具有智能。", "id": 21}, {"ch": 3, "type": "judge", "stem": "属性图基于图结构，边表示实体，节点表示实体间的联系。属性图上的查询语言是 Cypher 语言。", "ans": "F", "exp": "错误。属性图中，节点表示“实体”，边表示“关系/联系”。题目将节点和边的定义说反了。", "id": 22}, {"ch": 3, "type": "judge", "stem": "一个典型的专家系统由知识库和推理机两部分组成。", "ans": "T", "exp": "正确。知识库（存放领域专家知识）与推理机（依据知识进行逻辑推理）是专家系统的两大核心组件。", "id": 23}, {"ch": 3, "type": "multi", "stem": "下列属于知识图谱的组成部分的是（ ）。", "opts": {"A": "实体", "B": "关系", "C": "文本", "D": "三元组"}, "ans": ["A", "B", "D"], "exp": "选 ABD。知识图谱由实体、关系以及由它们构成的三元组组成，非结构化文本本身不属于知识图谱的结构组成部分。", "id": 24}, {"ch": 3, "type": "single", "stem": "下面选项中不是描述逻辑中的公理的是（ ）。", "opts": {"A": "C(a)", "B": "r(a, b)", "C": "∃r. C"}, "ans": ["C"], "exp": "选 C。在描述逻辑中，C(a) 和 r(a, b) 是断言（ABox），属于公理；而 ∃r. C 是一个概念表达式（Complex Concept），用来描述“与某个 C 类型的个体有 r 关系”这一类事物，不是完整的命题或公理。", "id": 25}, {"ch": 3, "type": "single", "stem": "下面选项中不是描述逻辑中的概念表达式的是（ ）。", "opts": {"A": "parentOf(a, b)", "B": "Physicist(a)", "C": "Physicist ⊑ Scientist", "D": "∀parent. Male"}, "ans": ["D"], "exp": "选 D（依据原题库参考答案；注：在标准描述逻辑中 ∀parent. Male 实际上是概念表达式，而 A/B/C 为公理/断言，原题干可能漏写“是/不是”反义，考试请牢记本题库原答案为 D）。", "id": 26}, {"ch": 3, "type": "single", "stem": "下列关于 KBQA 系统的说法不正确的是（ ）。", "opts": {"A": "KBQA 系统不需要知识库及知识图谱的支持", "B": "IBM Watson 和 WolframAlpha 均是 KBQA 系统", "C": "问题理解模块首先进行实体识别", "D": "语义解析模块将查询问题转化为语义图结构"}, "ans": ["A"], "exp": "选 A。KBQA 全称 Knowledge Base Question Answering，即“基于知识库的问答”，必然需要知识库支持。", "id": 27}, {"ch": 3, "type": "multi", "stem": "由非结构化数据进行关系抽取的方法有（ ）。", "opts": {"A": "基于模板的方法", "B": "基于弱监督学习的方法", "C": "基于监督学习的方法"}, "ans": ["A", "B", "C"], "exp": "选 ABC（原题库标注 ACD，对应本页仅有的三个选项 A/B/C 全选）。非结构化文本关系抽取常见方法包括基于模板/规则、监督学习与弱监督/远程监督学习。", "id": 28}, {"ch": 3, "type": "multi", "stem": "下列关于大语言模型（LLM）与问答的说法正确的是（ ）。", "opts": {"A": "大语言模型主要用于处理和生成自然语言文本", "B": "大语言模型的理论基础是 Transformer 架构", "C": "提示工程是关于如何更好地向大语言模型进行提问的技术", "D": "给大语言模型的提示词必须具备角色和上下文要素"}, "ans": ["A", "B", "C"], "exp": "选 ABC。提示词并不“必须”同时具备角色和上下文要素，简单直接的提问也可工作，故 D 过于绝对。", "id": 29}, {"ch": 3, "type": "multi", "stem": "下列关于思维链（CoT）和检索增强生成（RAG）技术的说法正确的是（ ）。", "opts": {"A": "思维链技术是一种改进的提示策略", "B": "RAG 方法适合知识密集型的任务", "C": "RAG 方法不需要检索外挂知识库", "D": "思维链技术适用于算术推理和符号推理"}, "ans": ["A", "B", "D"], "exp": "选 ABD。C 是错误的，RAG（检索增强生成）的核心思想就是通过检索“外挂知识库”来增强模型的生成能力、减少幻觉。", "id": 30}, {"ch": 3, "type": "multi", "stem": "下面选项中关于知识问答的说法正确的是（ ）。", "opts": {"A": "问答系统目前分为传统问答系统、基于知识库的问答系统和基于大型语言模型的问答系统", "B": "问答系统的核心架构通常包括问答处理框架、知识库和数据集", "C": "基于知识的问答系统只需要进行问题理解，不需要进行语义解析", "D": "问答系统能够理解自然语言中的问题并提供相关、准确的答案"}, "ans": ["A", "B", "D"], "exp": "选 ABD。C 是错误的，基于知识的问答（KBQA）通常需要语义解析（Semantic Parsing）将自然语言转化为逻辑查询语句（如 SPARQL）。", "id": 31}, {"ch": 4, "type": "judge", "stem": "无监督学习需要使用到数据的人工标签。", "ans": "F", "exp": "错误。无监督学习处理的是没有人工标签（Label）的数据，目的是发现数据内在结构；有标签的是监督学习。", "id": 32}, {"ch": 4, "type": "judge", "stem": "决策树中每个非叶子结点表示对分类目标的某个属性上的一个判断。", "ans": "T", "exp": "正确。决策树的内部（非叶子）节点对应特征属性测试，分支代表测试输出。", "id": 33}, {"ch": 4, "type": "judge", "stem": "决策树中每个叶子结点表示一种分类结果。", "ans": "T", "exp": "正确。决策树的叶节点存放最终的类别判定结果。", "id": 34}, {"ch": 4, "type": "judge", "stem": "Adaboost 算法主要采用调整样本权重的方式来对样本分布进行调整。", "ans": "T", "exp": "正确。AdaBoost 提高前一轮被误分类样本的权重、降低分对样本的权重，使后续弱分类器更关注难分样本。", "id": 35}, {"ch": 4, "type": "judge", "stem": "集成学习算法的基本思想就是将多个分类器组合，从而实现一个预测效果更好的集成分类器。", "ans": "T", "exp": "正确。集成学习通过组合多个弱学习器来显著提升泛化性能与预测准确率。", "id": 36}, {"ch": 4, "type": "judge", "stem": "boosting 把每个弱分类器都视为独立的是一种并行的集成方式；而 bagging 各弱分类器之间有依赖关系，是一种串行的集成方式。", "ans": "F", "exp": "错误。描述反了。Bagging（如随机森林）中分类器之间无依赖，可并行生成；Boosting（如 Adaboost）是基于前一个分类器的错误来调整权重，是串行的。", "id": 37}, {"ch": 4, "type": "judge", "stem": "K-means 聚类算法对数据的尺寸敏感。", "ans": "T", "exp": "正确。K-means 是基于距离的算法（如欧氏距离），如果数据特征的尺度（Scale）差异很大，会严重影响聚类效果，因此通常需要归一化处理。", "id": 38}, {"ch": 4, "type": "judge", "stem": "对于 SVM 分类算法，待分样本集中的大部分样本不是支持向量，移去或者减少这些样本对分类结果没有影响。", "ans": "T", "exp": "正确。SVM（支持向量机）的决策边界仅由少数几个“支持向量”（即离超平面最近的样本点）决定，其他非支持向量样本的移除不改变决策边界。", "id": 39}, {"ch": 4, "type": "single", "stem": "在监督学习中，测试集的作用是什么？", "opts": {"A": "用于训练模型", "B": "用于评估模型性能", "C": "用于选择特征", "D": "用于数据增强"}, "ans": ["B"], "exp": "选 B。训练集用于拟合模型参数，测试集用于客观评估模型在未见数据上的泛化性能。", "id": 40}, {"ch": 4, "type": "single", "stem": "在监督学习中，如果数据集的标签是连续的数值，这种任务通常被称为什么？", "opts": {"A": "分类任务", "B": "回归任务", "C": "聚类任务", "D": "降维任务"}, "ans": ["B"], "exp": "选 B。标签离散 → 分类任务；标签连续（如房价、温度）→ 回归任务。", "id": 41}, {"ch": 4, "type": "multi", "stem": "传统分类方法包括（ ）。", "opts": {"A": "贝叶斯算法", "B": "支持向量机", "C": "逻辑回归", "D": "决策树", "E": "随机森林"}, "ans": ["A", "B", "C", "D", "E"], "exp": "选 ABCDE。朴素贝叶斯、SVM、逻辑回归、决策树和随机森林都是经典的传统分类算法。", "id": 42}, {"ch": 4, "type": "single", "stem": "以下哪一种算法不属于监督学习算法？", "opts": {"A": "支持向量机", "B": "聚类", "C": "决策树"}, "ans": ["B"], "exp": "选 B。聚类（Clustering）不需要标签，属于典型的无监督学习算法；SVM 和决策树属于监督学习。", "id": 43}, {"ch": 4, "type": "single", "stem": "在无监督学习中，以下哪个算法通常用于将数据点分组以揭示数据的内在结构和模式？", "opts": {"A": "线性回归", "B": "逻辑回归", "C": "K-均值聚类", "D": "支持向量机"}, "ans": ["C"], "exp": "选 C。K-均值聚类（K-Means）是无监督聚类算法，用于将数据按相似度自动分组。", "id": 44}, {"ch": 4, "type": "multi", "stem": "以下哪些场景可以采用无监督聚类的方法？", "opts": {"A": "异常检测", "B": "数据压缩", "C": "语音识别"}, "ans": ["A", "B"], "exp": "选 AB。语音识别通常需要大量标注数据（音频-文本对），属于监督学习范畴；异常检测与数据压缩可用聚类实现。", "id": 45}, {"ch": 4, "type": "single", "stem": "决策树建立过程中，结果具有高信息熵（high entropy）意味着？", "opts": {"A": "纯度高", "B": "有用", "C": "无用", "D": "其他"}, "ans": ["C"], "altAns": ["D"], "exp": "选 C（或 D）。信息熵（Entropy）衡量系统的混乱程度或不确定性。熵越高，纯度越低（越混乱）。在决策树分裂中，我们希望分裂后的子节点熵越低（纯度越高）越好，因此高熵意味着分裂效果不好（无用）。", "id": 46}, {"ch": 4, "type": "multi", "stem": "以下哪些算法是分类算法？", "opts": {"A": "C4.5", "B": "DBSCAN", "C": "K-Means", "D": "SVM"}, "ans": ["A", "D"], "exp": "选 AD。C4.5 是决策树分类算法，SVM 是分类算法；DBSCAN 和 K-Means 是无监督聚类算法。", "id": 47}, {"ch": 4, "type": "single", "stem": "集成学习中，哪种方法通过构建多个决策树并取其预测结果的多数投票来提高分类的准确性？", "opts": {"A": "随机森林", "B": "支持向量机", "C": "神经网络", "D": "线性回归"}, "ans": ["A"], "exp": "选 A。随机森林（Random Forest）基于 Bagging 思想构建多棵决策树，分类任务通过多数投票决定最终类别。", "id": 48}, {"ch": 4, "type": "multi", "stem": "以下哪些是 k 均值方法的缺点？", "opts": {"A": "聚类的个数（需预设）", "B": "对初始值敏感", "C": "对噪声点非常敏感"}, "ans": ["A", "B", "C"], "exp": "选 ABC。K-means 需要预先指定 K 值（A）；初始中心点选得不好可能陷入局部最优（B）；均值计算容易受离群点（噪声）拉扯（C）。", "id": 49}, {"ch": 4, "type": "multi", "stem": "以下哪些属于无监督学习的主要任务？", "opts": {"A": "关联分析", "B": "聚类", "C": "降维", "D": "递归分析"}, "ans": ["A", "B", "C"], "exp": "选 ABC。无监督学习的三大典型任务是聚类、降维和关联规则分析。", "id": 50}, {"ch": 4, "type": "multi", "stem": "以下属于聚类算法的是（ ）。", "opts": {"A": "K均值", "B": "DBSCAN", "C": "层次聚类"}, "ans": ["A", "B", "C"], "exp": "选 ABC。K-Means（划分聚类）、DBSCAN（密度聚类）和层次聚类都是经典的聚类算法。", "id": 51}, {"ch": 4, "type": "single", "stem": "以下哪个任务不是无监督学习的应用？", "opts": {"A": "异常检测", "B": "推荐系统", "C": "图像分类", "D": "关联规则挖掘"}, "ans": ["C"], "exp": "选 C。图像分类（Image Classification）通常指给定图片预测其类别，需要预先定义的标签进行训练，是典型的监督学习。", "id": 52}, {"ch": 5, "type": "judge", "stem": "深度学习是人工智能技术的分支。", "ans": "T", "exp": "正确。包含关系为：人工智能 ⊃ 机器学习 ⊃ 深度学习。", "id": 53}, {"ch": 5, "type": "judge", "stem": "大模型在处理复杂任务时，是否能够更好地泛化到未见过的数据上？", "ans": "T", "exp": "正确。大规模预训练赋予大模型强大的涌现能力与零样本/少样本泛化能力。", "id": 54}, {"ch": 5, "type": "judge", "stem": "强化学习的效果一定优于半监督学习？", "ans": "F", "exp": "错误。没有一种算法在所有情况下都优于另一种（没有免费午餐定理）。强化学习适用于决策和控制问题，半监督学习适用于利用未标注数据的分类/回归问题，两者应用场景不同，无法直接比较优劣。", "id": 55}, {"ch": 5, "type": "judge", "stem": "强化学习能够在不确定的环境中学到最优策略。", "ans": "T", "exp": "正确。强化学习通过智能体与环境不断试错交互、最大化累积奖励来学习最优策略。", "id": 56}, {"ch": 5, "type": "judge", "stem": "DALL-E 大模型的主要功能是生成图像。", "ans": "T", "exp": "正确。DALL-E 是 OpenAI 推出的文生图多模态大模型，核心功能是根据文本描述生成图像。", "id": 57}, {"ch": 5, "type": "judge", "stem": "CLIP 模型的主要作用是将图像转换为文本描述。", "ans": "F", "exp": "错误。CLIP（Contrastive Language-Image Pre-training）的主要作用是学习图像和文本之间的匹配关系（对齐），可用于图文检索或零样本分类，但其直接功能不是生成文本描述（那是 Image Captioning 任务）。", "id": 58}, {"ch": 5, "type": "single", "stem": "深度学习模型在处理非线性关系时，相比传统线性模型有何优势？", "opts": {"A": "更好的泛化能力", "B": "更高的数据压缩率", "C": "更快的计算速度", "D": "更高的数据压缩率（重复项）"}, "ans": ["A"], "exp": "选 A。深度学习通过多层非线性激活函数，能够拟合极其复杂的非线性函数，从而在复杂模式下具有更好的泛化能力。", "id": 59}, {"ch": 5, "type": "multi", "stem": "以下哪些是深度学习模型的主要优势？", "opts": {"A": "复杂非线性关系处理能力", "B": "适用于小数据量分析", "C": "大规模数据挖掘能力", "D": "强大的特征学习能力"}, "ans": ["A", "C", "D"], "exp": "选 ACD。深度学习通常需要大量数据来训练（不适合小数据量 B），其优势在于自动特征提取（D）、处理非线性（A）和挖掘大数据（C）。", "id": 60}, {"ch": 5, "type": "multi", "stem": "以下哪些是大模型的风险与挑战？", "opts": {"A": "数据安全", "B": "内容安全", "C": "认知安全"}, "ans": ["A", "B", "C"], "exp": "选 ABC。大模型面临数据隐私泄露（数据安全）、有害/虚假内容生成（内容安全）及价值观诱导/幻觉（认知安全）等多重挑战。", "id": 61}, {"ch": 5, "type": "single", "stem": "为什么大模型能够更好地泛化到未见过的数据上？", "opts": {"A": "因为它们有更多的参数", "B": "因为它们只能处理特定类型的数据", "C": "因为它们使用了特殊的硬件", "D": "因为它们不依赖于大量数据"}, "ans": ["D"], "exp": "选 D（原题库标注存疑）。通常认为大模型泛化能力强是因为参数量大且在海量数据上训练；原题库选 D 可能意指大模型具备 Few-shot/Zero-shot 能力，在测试新任务时“不依赖大量标注数据”。考试请留意原题库答案。", "id": 62}, {"ch": 5, "type": "multi", "stem": "以下哪项是强化学习中的关键概念？", "opts": {"A": "奖励函数", "B": "监督信号", "C": "环境", "D": "智能体"}, "ans": ["A", "C", "D"], "exp": "选 ACD。强化学习核心要素包括：Agent（智能体）、Environment（环境）、Action（动作）、Reward（奖励）。监督信号（B）是监督学习的概念。", "id": 63}, {"ch": 5, "type": "single", "stem": "GAN 中的判别器主要做什么？", "opts": {"A": "调整网络权重以改善性能", "B": "修正生成器的错误", "C": "区分真实数据和生成器生成的假数据", "D": "生成新的数据样本"}, "ans": ["C"], "exp": "选 C。GAN（生成对抗网络）由生成器（Generator）和判别器（Discriminator）组成。生成器负责造假，判别器负责鉴别真伪（区分真实数据和假数据）。", "id": 64}, {"ch": 5, "type": "single", "stem": "以下哪一项是 Transformer 模型的主要特点？", "opts": {"A": "层次聚类", "B": "树状结构", "C": "自注意力机制", "D": "递归结构"}, "ans": ["C"], "exp": "选 C。Transformer 架构的核心创新是抛弃了循环和卷积，完全依赖自注意力机制（Self-Attention）来并行捕捉序列中的长距离依赖关系。", "id": 65}, {"ch": 5, "type": "single", "stem": "GPT-3 是一种什么类型的模型？", "opts": {"A": "生成模型", "B": "判别模型", "C": "分类模型", "D": "聚类模型"}, "ans": ["A"], "exp": "选 A。GPT（Generative Pre-trained Transformer）顾名思义是生成式预训练模型，主要用于文本生成。", "id": 66}, {"ch": 5, "type": "multi", "stem": "微调迁移（Fine-tuning Transfer Learning）的主要优势包括以下哪些？", "opts": {"A": "提高模型性能", "B": "减少计算成本", "C": "加快开发周期", "D": "增强泛化能力", "E": "适应多样化任务"}, "ans": ["A", "B", "C", "D", "E"], "exp": "选 ABCDE。基于预训练模型进行微调可以大幅节省算力与开发时间，同时提升下游任务性能和泛化能力。", "id": 67}, {"ch": 5, "type": "single", "stem": "以下哪一项最能描述 LoRA（Low-Rank Adaptation）的工作原理？", "opts": {"A": "使用更大的数据集来训练模型", "B": "增加模型的层数以提高其复杂度", "C": "通过插入低秩矩阵来微调预训练模型，使得参数调整更高效"}, "ans": ["C"], "exp": "选 C。LoRA 冻结预训练模型原有权重，在旁路插入可训练的低秩分解矩阵，极大地减少了微调所需的参数量和计算资源。", "id": 68}, {"ch": 6, "type": "judge", "stem": "广义的语音合成研究内容包括语音转换、歌唱合成、可视语音合成。", "ans": "T", "exp": "正确。广义语音合成除文本转语音（TTS）外，还涵盖语音转换、歌唱合成与可视语音合成等方向。", "id": 69}, {"ch": 6, "type": "judge", "stem": "语音合成的目标包括了可懂度（Intelligibility）和自然度（Naturalness）。", "ans": "T", "exp": "正确。衡量语音合成质量的两大核心指标就是可懂度（听得清）和自然度（像真人）。", "id": 70}, {"ch": 6, "type": "judge", "stem": "语音大模型可以同时处理多个语音任务。", "ans": "T", "exp": "正确。通用语音大模型能够统一处理语音识别、语音合成、语音翻译、情感识别等多种任务。", "id": 71}, {"ch": 6, "type": "judge", "stem": "自监督预训练模型的表征通常是更加通用的。", "ans": "T", "exp": "正确。自监督学习从海量无标注语音中学习底层声学与语义表征，迁移到下游任务时通用性更强。", "id": 72}, {"ch": 6, "type": "judge", "stem": "语音大模型既可以通过微调的方式适配到多种基于小模型的下游任务，也可以与 LLM 结合实现统一框架的语音交互。", "ans": "T", "exp": "正确。语音大模型既可作为通用编码器微调适配下游任务，也能接入大语言模型实现端到端多模态语音交互。", "id": 73}, {"ch": 6, "type": "judge", "stem": "经典统计参数语音合成的主要流程和模块包括文本分析、韵律分析、声学模型、声码器。", "ans": "T", "exp": "正确。文本分析 → 韵律分析 → 声学模型 → 声码器是经典统计参数语音合成（SPSS）的标准流水线。", "id": 74}, {"ch": 6, "type": "judge", "stem": "N-gram 语言模型是一种基于神经网络的语言模型。", "ans": "F", "exp": "错误。N-gram 是基于统计（概率统计）的语言模型，通过计算词序列出现的条件概率工作；基于神经网络的是 RNNLM、BERT 等。", "id": 75}, {"ch": 6, "type": "judge", "stem": "相比于监督/弱监督预训练，自监督预训练能更充分地利用网络上海量的无标注数据。", "ans": "T", "exp": "正确。自监督学习无需人工标注，可直接利用互联网海量原始音频进行大规模预训练。", "id": 76}, {"ch": 6, "type": "multi", "stem": "以下属于计算机听觉的研究内容的有（ ）。", "opts": {"A": "音频事件检测", "B": "人脸识别", "C": "语音识别", "D": "音乐信息检索"}, "ans": ["A", "C", "D"], "exp": "选 ACD。人脸识别属于计算机视觉（CV），而非计算机听觉。", "id": 77}, {"ch": 6, "type": "single", "stem": "根据背景干扰的类型，语音分离通常分为三类。其中，语音与非语音分离称为（ ）。", "opts": {"A": "混响消除", "B": "说话人分离", "C": "语音去噪", "D": "回声消除"}, "ans": ["C"], "exp": "选 C。语音与非语音（背景噪音）的分离即为语音去噪/降噪（Denoising）。", "id": 78}, {"ch": 6, "type": "multi", "stem": "统计参数语音合成的优点包括（ ）。", "opts": {"A": "无需大规模的精心设计的语音数据库", "B": "合成语音的质量稳定", "C": "可以控制韵律", "D": "可扩展性好易于维护"}, "ans": ["A", "B", "C", "D"], "exp": "选 ABCD。与波形拼接相比，统计参数合成模型体积小、质量稳定、韵律可控且易于扩展维护。", "id": 79}, {"ch": 6, "type": "multi", "stem": "语音合成的主要挑战包括（ ）。", "opts": {"A": "情感、多风格等高表现力语音合成", "B": "可控的个性化语音克隆、语音合成", "C": "长上下文的理解"}, "ans": ["A", "B", "C"], "exp": "选 ABC。高表现力情感合成、个性化声音克隆以及结合长上下文的韵律理解均是当前 TTS 的核心挑战。", "id": 80}, {"ch": 6, "type": "single", "stem": "以下哪种方法不属于统计参数语音合成方法？", "opts": {"A": "基于 HMM 的语音合成方法", "B": "基于 DNN 的语音合成方法", "C": "波形拼接语音合成"}, "ans": ["C"], "exp": "选 C。语音合成主要分为波形拼接合成（Concatenative）和统计参数合成（Parametric）。波形拼接直接拼接录音片段，不属于统计参数方法。", "id": 81}, {"ch": 6, "type": "multi", "stem": "语音大模型主要挑战包括（ ）。", "opts": {"A": "可控语音生成大模型", "B": "深度意图理解的语音/文本多模态人机交互", "C": "低能耗的通用语音交互智能"}, "ans": ["A", "B", "C"], "exp": "选 ABC。可控生成、深度多模态意图理解与低能耗部署都是语音大模型面临的主要挑战。", "id": 82}, {"ch": 7, "type": "judge", "stem": "词表示是前馈神经网络学习的副产品。", "ans": "F", "exp": "错误。虽然早期神经语言模型（如 Bengio 的 NNLM）中词向量是副产品，但现代词向量（如 Word2Vec）有专门优化目标，且题库强调其来自“神经语言模型”而非泛指前馈神经网络。", "id": 83}, {"ch": 7, "type": "judge", "stem": "语义分析试图从更灵活的上下文理解语言的衔接性、连贯性、意图性、情境性等。", "ans": "F", "exp": "错误。从上下文、意图、情境角度理解语言属于语用分析（Pragmatics）；语义分析（Semantics）更多关注字面意义的组合。", "id": 84}, {"ch": 7, "type": "judge", "stem": "语用分析指对输入的文本句子进行分析以得到句子的句法结构的处理过程。", "ans": "F", "exp": "错误。分析句子结构和排列顺序的是句法分析（Syntax），不是语用分析。", "id": 85}, {"ch": 7, "type": "judge", "stem": "汉语分词的主要难点在于切分歧义与未登录词识别。", "ans": "T", "exp": "正确。中文没有天然空格分隔，切分歧义（如“乒乓球拍卖完了”）和新词/人名地名等未登录词识别是分词两大难点。", "id": 86}, {"ch": 7, "type": "judge", "stem": "在自然语言理解中存在语言歧义现象，但在语言生成中并不存在。", "ans": "F", "exp": "错误。语言生成也面临歧义问题，例如生成的句子可能指代不明或存在多种解读。", "id": 87}, {"ch": 7, "type": "judge", "stem": "自然语言处理的难点包括语言歧义和语境灵活。", "ans": "T", "exp": "正确。人类语言高度依赖上下文语境且充满一词多义、句法歧义，这是 NLP 的核心难点。", "id": 88}, {"ch": 7, "type": "judge", "stem": "句法分析指对输入的文本句子进行分析以得到句子的句法结构的处理过程。", "ans": "T", "exp": "正确。句法分析旨在解析句子的语法成分和结构树。", "id": 89}, {"ch": 7, "type": "multi", "stem": "自然语言理解包括以下哪些？", "opts": {"A": "词法分析", "B": "语用分析", "C": "句法分析", "D": "语义分析"}, "ans": ["A", "B", "C", "D"], "exp": "选 ABCD。NLP 理解层级通常包括：词法（分词/词性）、句法（结构）、语义（含义）、语用（意图/环境）。", "id": 90}, {"ch": 7, "type": "multi", "stem": "典型的语言生成任务有哪些？", "opts": {"A": "机器翻译", "B": "信息抽取", "C": "对话系统", "D": "自动摘要"}, "ans": ["A", "C", "D"], "exp": "选 ACD。信息抽取（Information Extraction）是从文本中提取结构化信息（如实体、关系），属于理解任务，而非生成任务。", "id": 91}, {"ch": 7, "type": "single", "stem": "词表示是（ ）学习的副产品。", "opts": {"A": "高阶语言模型", "B": "前馈神经网络", "C": "神经语言模型", "D": "统计语言模型"}, "ans": ["C"], "exp": "选 C。Word Embedding（词表示/词向量）通常是在训练神经语言模型（Neural Language Model）时得到的权重矩阵。", "id": 92}, {"ch": 8, "type": "judge", "stem": "卷积神经网络模拟了人脑视觉系统简单细胞和复杂细胞的特征提取功能。", "ans": "T", "exp": "正确。CNN 中的卷积层对应简单细胞的局部方向特征提取，池化层对应复杂细胞的下采样与平移不变性。", "id": 93}, {"ch": 8, "type": "judge", "stem": "卷积核在卷积神经网络中的主要作用是增加计算速度。", "ans": "F", "exp": "错误。卷积核的主要作用是特征提取（如边缘、纹理）和通过参数共享减少参数量，并非为了增加计算速度（事实上卷积计算量很大）。", "id": 94}, {"ch": 8, "type": "judge", "stem": "卷积计算利用了图片中像素的时序关联性，进行特征提取。", "ans": "F", "exp": "错误。图片像素之间主要是空间关联性（Spatial correlation），卷积利用的是空间局部性；时序关联性通常指时间序列或视频。", "id": 95}, {"ch": 8, "type": "judge", "stem": "RNN 在训练过程中，每一步都会更新其记忆，并根据当前和之前的记忆来做出判断。", "ans": "T", "exp": "正确。循环神经网络（RNN）通过隐藏状态（Hidden State）传递历史信息，结合当前输入更新记忆。", "id": 96}, {"ch": 8, "type": "judge", "stem": "CNN 是循环神经网络的一种。", "ans": "F", "exp": "错误。CNN（卷积神经网络）和 RNN（循环神经网络）是两种不同的神经网络架构。", "id": 97}, {"ch": 8, "type": "judge", "stem": "卷积神经网络（CNN）相较循环神经网络（RNN）更适合于处理序列数据。", "ans": "F", "exp": "错误。RNN 设计之初就是为了处理序列数据（有前后依赖关系），CNN 主要用于处理网格数据（如图像）。", "id": 98}, {"ch": 8, "type": "judge", "stem": "脑机接口技术采用侵入式比非侵入式更安全。", "ans": "F", "exp": "错误。侵入式需要手术植入电极，存在感染和组织损伤风险，非侵入式（如 EEG 脑电帽）更安全。", "id": 99}, {"ch": 8, "type": "judge", "stem": "混合智能最显著的特点是层次化。", "ans": "T", "exp": "正确。按照课程题库定义，混合智能（人机混合智能）最显著的特点是层次化。", "id": 100}, {"ch": 8, "type": "judge", "stem": "生物神经元结构启发了智能领域的感知机神经网络模型。", "ans": "T", "exp": "正确。人工神经元和感知机模型直接受生物神经元的树突输入、细胞体加权求和与轴突阈值激活机制启发。", "id": 101}, {"ch": 8, "type": "multi", "stem": "以下哪种方法属于卷积神经网络的基本组件？", "opts": {"A": "卷积层", "B": "池化层", "C": "激活函数", "D": "复制层"}, "ans": ["A", "B", "C"], "exp": "选 ABC。D“复制层”不是 CNN 的标准组件；卷积层、池化层和激活函数（如 ReLU）是核心组件。", "id": 102}, {"ch": 8, "type": "multi", "stem": "CNN 的实际应用有哪些？", "opts": {"A": "人脸识别", "B": "目标分割", "C": "骨骼识别", "D": "图片分类", "E": "目标定位检测"}, "ans": ["A", "B", "C", "D", "E"], "exp": "选 ABCDE。CNN 广泛应用于各类计算机视觉任务，包括图像分类、人脸/骨骼识别、目标检测与语义分割。", "id": 103}, {"ch": 8, "type": "multi", "stem": "以下哪些是卷积神经网络的缺点？", "opts": {"A": "数据资源不足导致深层神经网络容易过拟合", "B": "计算代价很大，需要很高的计算资源", "C": "技术（网络结构设计和优化）仍存在收敛难的缺陷"}, "ans": ["A", "B", "C"], "exp": "选 ABC。深层 CNN 对数据量、算力以及网络结构调优和收敛性都有较高要求。", "id": 104}, {"ch": 8, "type": "single", "stem": "下列哪个是 RNN 的一个主要优势？", "opts": {"A": "对噪声不敏感", "B": "能够捕捉长距离依赖关系", "C": "处理速度快", "D": "易于训练"}, "ans": ["B"], "exp": "选 B。RNN 通过隐状态传递信息，理论上可以捕捉序列中前后元素的依赖关系（即长距离依赖）。", "id": 105}, {"ch": 8, "type": "multi", "stem": "以下哪些是 RNN（循环神经网络）的优势？", "opts": {"A": "能够处理序列数据", "B": "能够记忆长期依赖关系", "C": "在处理时间序列数据时表现良好", "D": "适用于静态数据处理"}, "ans": ["A", "B", "C"], "exp": "选 ABC。D 错误，静态网格数据（如单张图片）通常用 CNN 处理更优。", "id": 106}, {"ch": 8, "type": "multi", "stem": "脑机接口技术按照信号采集方式分为（ ）。", "opts": {"A": "非侵入式采集", "B": "半侵入式采集", "C": "侵入式采集"}, "ans": ["A", "B", "C"], "exp": "选 ABC。脑机接口（BCI）按电极植入深度分为非侵入式、半侵入式和侵入式三类。", "id": 107}, {"ch": 8, "type": "multi", "stem": "脑机混合智能进行功能增强的方式有哪些？", "opts": {"A": "行为增加", "B": "认知增强", "C": "感知增强"}, "ans": ["A", "B", "C"], "exp": "选 ABC。脑机混合智能可从感知、认知与行为三个维度实现功能增强。", "id": 108}, {"ch": 9, "type": "judge", "stem": "伺服电机旋转的角度可以被测量并反馈给伺服驱动器。", "ans": "T", "exp": "正确。这是“闭环控制”的基础，伺服电机通常带有编码器来实时反馈位置/角度信息。", "id": 109}, {"ch": 9, "type": "judge", "stem": "一个机器人系统通常由大脑、机构、能源、执行器、传感器、通讯和交互界面组成。", "ans": "T", "exp": "正确。上述七大模块共同构成了完整的现代机器人软硬件系统。", "id": 110}, {"ch": 9, "type": "judge", "stem": "固定底盘机器人的工作半径可以无限大。", "ans": "F", "exp": "错误。固定底盘机器人被固定在某个位置（如工业机械臂），其工作半径受限于机械臂的长度，是有限的。", "id": 111}, {"ch": 9, "type": "judge", "stem": "超声雷达的测距精度高于激光雷达。", "ans": "F", "exp": "错误。激光雷达（LiDAR）使用光波，波长短，测量精度高；超声波受空气环境影响大，精度相对较低。", "id": 112}, {"ch": 9, "type": "judge", "stem": "机器人与人工智能没有本质区别，既可以将机器人理解为人工智能，也可以将人工智能理解为机器人。", "ans": "F", "exp": "错误。机器人是物理实体，强调执行和与物理世界的交互；人工智能是技术或算法，强调智能处理。两者有交集（智能机器人），但概念不同。", "id": 113}, {"ch": 9, "type": "multi", "stem": "扫地机器人上安装了如下哪些传感器？", "opts": {"A": "激光雷达", "B": "3D 摄像头", "C": "编码器", "D": "防碰撞传感器"}, "ans": ["A", "B", "C", "D"], "exp": "选 ABCD。现代智能扫地机器人综合使用激光雷达建图、3D 摄像头避障、轮子编码器里程计以及防碰撞传感器。", "id": 114}, {"ch": 9, "type": "multi", "stem": "如下有关机器人的描述正确的包括（ ）。", "opts": {"A": "机器人的外形必须长得像人那样，即机器人必须有头部、躯干、四肢等部分", "B": "机器人在某些方面的感知能力是超过人类的", "C": "机器人可以协助人类完成危险的、无聊的、脏的和困难的工作", "D": "机器人是可以自动执行工作任务且具有一定智能的机器"}, "ans": ["B", "C", "D"], "exp": "选 BCD。A 错误，机器人不一定要有人形（如扫地机器人、工业机械臂、无人机等）。", "id": 115}, {"ch": 9, "type": "single", "stem": "如下有关机器人导航的理解正确的是（ ）。", "opts": {"A": "机器人导航是解决机器人从环境中的某个起点顺利地到达某个终点的技术，涉及机器人定位、机器人路径规划和环境建图等主要技术", "B": "机器人定位与环境建图是相互独立的，两者在任何情况下都是没有关系的", "C": "机器人导航结果不会影响机器人的控制效果", "D": "机器人导航与传感器没有任何关系"}, "ans": ["A"], "exp": "选 A。B 错误，SLAM（同步定位与建图）技术中两者紧密耦合；C 错误，导航规划出的路径直接决定控制指令；D 错误，导航高度依赖传感器数据。", "id": 116}, {"ch": 9, "type": "judge", "stem": "机器人常用的外部传感器包括编码器、陀螺仪、加速度计和磁力计。", "ans": "T", "exp": "正确（按原题库答案）。注：严格来说编码器、陀螺仪、加速度计通常归类为“内部传感器”（感知自身状态），激光雷达、摄像头等才是“外部传感器”（感知环境），但依据提供的题库原答案，此题判定为对。", "id": 117}]};
+const STORAGE_KEY = 'ai_intro_quiz_v1';
+
+const chMap = {};
+DB.chapters.forEach(c => { chMap[c.id] = c; });
+
+let store = {
+  answered: {},       // { [qId]: { correct: bool } }
+  wrong: [],          // [qId, ...]
+  favs: [],           // [qId, ...]
+  rollbackFixed: 0,   // count of rolled-back questions mastered
+  rollbackOn: true,
+  rollbackGap: 3,     // 2 | 3 | 5 | 999
+  mode: 'practice',   // 'practice' | 'study' | 'exam'
+  qtype: 'all',       // 'all' | 'judge' | 'single' | 'multi'
+  shuffle: false
+};
+
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) store = { ...store, ...JSON.parse(raw) };
+  } catch (e) {}
+}
+function saveStore() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) {}
+}
+
+// Each item in session.queue is { q, isRollback: bool, attemptNum: number, userAns: null | 'T'|'F' | ['A',...], graded: bool, correct: bool|null, rolledBackFromThis: bool }
+let session = {
+  title: '',
+  originQuestions: [],
+  queue: [],
+  idx: 0,
+  mode: 'practice',
+  submitted: false
+};
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => el.classList.add('hidden'), 2600);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function filterByType(list) {
+  if (store.qtype === 'all') return list;
+  return list.filter(q => q.type === store.qtype);
+}
+
+function formatCorrectAns(q) {
+  if (q.type === 'judge') return q.ans === 'T' ? '✓ 正确' : '✗ 错误';
+  let s = q.ans.join('');
+  if (q.altAns) s += '（或 ' + q.altAns.join('') + '）';
+  return s;
+}
+
+function checkIsCorrect(q, userAns) {
+  if (!userAns) return false;
+  if (q.type === 'judge') return userAns === q.ans;
+  const u = [...userAns].sort().join('');
+  const a = [...q.ans].sort().join('');
+  if (u === a) return true;
+  if (q.altAns && u === [...q.altAns].sort().join('')) return true;
+  return false;
+}
+
+// ==================== RENDER HOME ====================
+function renderHome() {
+  document.getElementById('homeView').classList.remove('hidden');
+  document.getElementById('quizView').classList.add('hidden');
+  document.getElementById('resultView').classList.add('hidden');
+
+  const doneEntries = Object.values(store.answered);
+  const rightCount = doneEntries.filter(x => x.correct).length;
+  document.getElementById('statDone').textContent = doneEntries.length;
+  document.getElementById('statAcc').textContent = doneEntries.length ? Math.round((rightCount / doneEntries.length) * 100) + '%' : '0%';
+  document.getElementById('statRollbackFixed').textContent = store.rollbackFixed;
+  document.getElementById('topWrongCount').textContent = store.wrong.length;
+  document.getElementById('topFavCount').textContent = store.favs.length;
+
+  document.getElementById('rollbackToggle').checked = store.rollbackOn;
+  document.getElementById('rollbackGapSelect').value = String(store.rollbackGap);
+  document.getElementById('rollbackGapWrap').classList.toggle('opacity-40', !store.rollbackOn);
+  document.getElementById('shuffleToggle').checked = store.shuffle;
+
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    const on = b.dataset.mode === store.mode;
+    b.className = 'mode-btn px-2.5 py-1.5 rounded-lg font-semibold transition ' +
+      (on ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900');
+  });
+
+  document.querySelectorAll('.qtype-btn').forEach(b => {
+    const on = b.dataset.qtype === store.qtype;
+    b.className = 'qtype-btn px-3 py-1.5 rounded-lg font-semibold transition ' +
+      (on ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900');
+  });
+
+  // Render 9 Chapters
+  const grid = document.getElementById('chaptersGrid');
+  grid.innerHTML = '';
+  DB.chapters.forEach(ch => {
+    const chQs = filterByType(DB.questions.filter(q => q.ch === ch.id));
+    if (chQs.length === 0) return;
+    const done = chQs.filter(q => store.answered[q.id]).length;
+    const right = chQs.filter(q => store.answered[q.id] && store.answered[q.id].correct).length;
+    const wrongInCh = chQs.filter(q => store.wrong.includes(q.id)).length;
+    const pct = Math.round((done / chQs.length) * 100);
+
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'text-left bg-white rounded-2xl border border-slate-200/90 hover:border-indigo-400 hover:shadow-md p-5 transition flex flex-col justify-between gap-4 group';
+    card.innerHTML = `
+      <div class="space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-mono-num text-xs font-bold px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700">第 ${ch.id} 章</span>
+          <div class="flex items-center gap-1.5">
+            ${wrongInCh > 0 ? `<span class="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700">错题 ${wrongInCh}</span>` : ''}
+            <span class="font-mono-num text-xs text-slate-500">${chQs.length} 题</span>
+          </div>
+        </div>
+        <div class="font-bold text-slate-900 text-base group-hover:text-indigo-700 transition">${escapeHtml(ch.name.replace(/^第.章\s*/, ''))}</div>
+        <p class="text-xs text-slate-500 leading-relaxed line-clamp-2">${escapeHtml(ch.desc)}</p>
+      </div>
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between text-xs text-slate-500">
+          <span>已刷 ${done}/${chQs.length}</span>
+          <span>${done ? '正确率 ' + Math.round((right / done) * 100) + '%' : '未开始'}</span>
+        </div>
+        <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div class="h-full bg-indigo-600 rounded-full transition-all" style="width:${pct}%"></div>
+        </div>
+      </div>
+    `;
+    card.addEventListener('click', () => startSession(ch.name, chQs));
+    grid.appendChild(card);
+  });
+}
+
+// ==================== QUIZ ENGINE & ROLLBACK ====================
+function startSession(title, qList) {
+  if (!qList || qList.length === 0) {
+    showToast('当前筛选条件下没有题目，请切换题型试试');
+    return;
+  }
+  let arr = [...qList];
+  if (store.shuffle) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  }
+  session = {
+    title,
+    originQuestions: arr,
+    queue: arr.map(q => ({
+      q,
+      isRollback: false,
+      attemptNum: 1,
+      userAns: q.type === 'multi' ? [] : null,
+      graded: store.mode === 'study',
+      correct: null,
+      rolledBackFromThis: false
+    })),
+    idx: 0,
+    mode: store.mode,
+    submitted: false
+  };
+  document.getElementById('homeView').classList.add('hidden');
+  document.getElementById('resultView').classList.add('hidden');
+  document.getElementById('quizView').classList.remove('hidden');
+  renderQuiz();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function scheduleRollback(item, manual = false) {
+  if (item.rolledBackFromThis && !manual) return null;
+  item.rolledBackFromThis = true;
+  const gap = store.rollbackGap;
+  const insertPos = gap >= 999 ? session.queue.length : Math.min(session.queue.length, session.idx + 1 + gap);
+  const newItem = {
+    q: item.q,
+    isRollback: true,
+    attemptNum: item.attemptNum + 1,
+    userAns: item.q.type === 'multi' ? [] : null,
+    graded: false,
+    correct: null,
+    rolledBackFromThis: false
+  };
+  session.queue.splice(insertPos, 0, newItem);
+  return insertPos - session.idx;
+}
+
+function recordGlobal(q, isCorrect, wasRollback) {
+  store.answered[q.id] = { correct: isCorrect };
+  if (!isCorrect) {
+    if (!store.wrong.includes(q.id)) store.wrong.push(q.id);
+  } else {
+    if (store.wrong.includes(q.id)) {
+      store.wrong = store.wrong.filter(id => id !== q.id);
+    }
+    if (wasRollback) {
+      store.rollbackFixed += 1;
+    }
+  }
+  saveStore();
+  document.getElementById('topWrongCount').textContent = store.wrong.length;
+}
+
+function renderQuiz() {
+  const item = session.queue[session.idx];
+  const q = item.q;
+  const total = session.queue.length;
+  const isRevealed = item.graded || session.submitted || session.mode === 'study';
+
+  // Header pills
+  const modeLabel = session.mode === 'practice' ? '刷题模式' : session.mode === 'study' ? '背题模式' : (session.submitted ? '交卷复盘' : '模拟交卷');
+  document.getElementById('quizModePill').textContent = modeLabel;
+  document.getElementById('quizRollbackPill').classList.toggle('hidden', !(store.rollbackOn && session.mode === 'practice'));
+
+  document.getElementById('sessionTitle').textContent = session.title;
+  document.getElementById('progressCounter').textContent = `${session.idx + 1} / ${total}`;
+  document.getElementById('progressBar').style.width = `${Math.round(((session.idx + 1) / total) * 100)}%`;
+
+  // Pending rollbacks ahead of current idx
+  const pendingRollbacks = session.queue.slice(session.idx + 1).filter(x => x.isRollback);
+  const pendBadge = document.getElementById('pendingRollbackBadge');
+  pendBadge.classList.toggle('hidden', pendingRollbacks.length === 0);
+  pendBadge.textContent = `待回滚 ${pendingRollbacks.length}`;
+
+  const mobDot = document.getElementById('mobRollbackDot');
+  mobDot.classList.toggle('hidden', pendingRollbacks.length === 0);
+  mobDot.textContent = pendingRollbacks.length;
+
+  // Type badge
+  const typeBadge = document.getElementById('qTypeBadge');
+  if (q.type === 'judge') {
+    typeBadge.textContent = '判断题';
+    typeBadge.className = 'px-2.5 py-0.5 rounded-lg text-xs font-bold bg-sky-100 text-sky-800';
+  } else if (q.type === 'single') {
+    typeBadge.textContent = '单选题';
+    typeBadge.className = 'px-2.5 py-0.5 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-800';
+  } else {
+    typeBadge.textContent = '多选题';
+    typeBadge.className = 'px-2.5 py-0.5 rounded-lg text-xs font-bold bg-violet-100 text-violet-800';
+  }
+
+  document.getElementById('qChapterBadge').textContent = chMap[q.ch] ? chMap[q.ch].short : `第${q.ch}章`;
+
+  const rbBadge = document.getElementById('qRollbackBadge');
+  if (item.isRollback) {
+    rbBadge.classList.remove('hidden');
+    rbBadge.textContent = `🔄 错题回滚（第 ${item.attemptNum} 次重练）`;
+  } else {
+    rbBadge.classList.add('hidden');
+  }
+
+  // Favorite button
+  const isFav = store.favs.includes(q.id);
+  document.getElementById('favIcon').textContent = isFav ? '★' : '☆';
+  document.getElementById('favText').textContent = isFav ? '已收藏' : '收藏';
+  document.getElementById('favBtn').className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold border transition ' +
+    (isFav ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-slate-200 text-slate-600 hover:bg-amber-50 hover:text-amber-700');
+
+  // Stem
+  document.getElementById('qStem').textContent = q.stem;
+
+  // Options
+  const optBox = document.getElementById('qOptions');
+  optBox.innerHTML = '';
+  const locked = (session.mode === 'practice' && item.graded) || session.submitted || session.mode === 'study';
+
+  if (q.type === 'judge') {
+    optBox.className = 'grid grid-cols-2 gap-3';
+    [['T', '✓', '正确'], ['F', '✗', '错误']].forEach(([val, sym, label]) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.disabled = locked;
+      const picked = item.userAns === val;
+      let cls = 'opt-card py-5 px-4 rounded-2xl border-2 font-bold text-base flex flex-col items-center justify-center gap-1.5 ';
+      if (isRevealed) {
+        if (val === q.ans) cls += 'border-emerald-500 bg-emerald-50 text-emerald-800';
+        else if (picked) cls += 'border-rose-500 bg-rose-50 text-rose-800';
+        else cls += 'border-slate-200 bg-white text-slate-400 opacity-65';
+      } else if (picked) {
+        cls += 'border-indigo-600 bg-indigo-50 text-indigo-900';
+      } else {
+        cls += 'border-slate-200 bg-white text-slate-800';
+      }
+      btn.className = cls;
+      btn.innerHTML = `<span class="text-2xl leading-none">${sym}</span><span>${label}</span>`;
+      btn.addEventListener('click', () => handleChoice(val));
+      optBox.appendChild(btn);
+    });
+  } else {
+    optBox.className = 'space-y-2.5';
+    Object.keys(q.opts).forEach(letter => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.disabled = locked;
+      const isSelected = q.type === 'multi' ? item.userAns.includes(letter) : (item.userAns && item.userAns[0] === letter);
+      const isRightOpt = q.ans.includes(letter) || (q.altAns && q.altAns.includes(letter));
+
+      let cls = 'opt-card w-full text-left px-4 py-3.5 rounded-2xl border-2 flex items-start gap-3 ';
+      let badgeCls = 'w-7 h-7 rounded-lg flex items-center justify-center font-mono-num font-bold text-sm shrink-0 ';
+
+      if (isRevealed) {
+        if (isRightOpt) {
+          cls += 'border-emerald-500 bg-emerald-50/90 text-emerald-950';
+          badgeCls += 'bg-emerald-600 text-white';
+        } else if (isSelected && !isRightOpt) {
+          cls += 'border-rose-500 bg-rose-50/90 text-rose-950';
+          badgeCls += 'bg-rose-600 text-white';
+        } else {
+          cls += 'border-slate-200 bg-white text-slate-400 opacity-75';
+          badgeCls += 'bg-slate-100 text-slate-400';
+        }
+      } else if (isSelected) {
+        cls += 'border-indigo-600 bg-indigo-50/90 text-indigo-950';
+        badgeCls += 'bg-indigo-600 text-white';
+      } else {
+        cls += 'border-slate-200 bg-white text-slate-800';
+        badgeCls += 'bg-slate-100 text-slate-700';
+      }
+
+      btn.className = cls;
+      btn.innerHTML = `
+        <span class="${badgeCls}">${letter}</span>
+        <span class="pt-0.5 text-sm sm:text-base leading-relaxed flex-1">${escapeHtml(q.opts[letter])}</span>
+        ${q.type === 'multi' && !isRevealed ? `<span class="pt-0.5 text-sm font-bold ${isSelected ? 'text-indigo-600' : 'text-slate-300'}">${isSelected ? '☑' : '☐'}</span>` : ''}
+      `;
+      btn.addEventListener('click', () => handleChoice(letter));
+      optBox.appendChild(btn);
+    });
+  }
+
+  // Multi-select confirm button
+  const multiBtn = document.getElementById('submitMultiBtn');
+  multiBtn.classList.toggle('hidden', !(q.type === 'multi' && !locked && session.mode === 'practice'));
+
+  // Explanation box
+  const expCard = document.getElementById('expCard');
+  if (isRevealed) {
+    expCard.classList.remove('hidden');
+    const rbNote = document.getElementById('expRollbackNote');
+    rbNote.classList.add('hidden');
+
+    if (session.mode === 'study' || !item.userAns || (Array.isArray(item.userAns) && item.userAns.length === 0)) {
+      expCard.className = 'rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 sm:p-5 space-y-2 fade-up';
+      document.getElementById('expHeadline').textContent = '💡 标准答案与解析';
+      document.getElementById('expHeadline').className = 'font-bold text-sm text-indigo-800';
+    } else if (item.correct) {
+      expCard.className = 'rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 sm:p-5 space-y-2 fade-up';
+      document.getElementById('expHeadline').textContent = item.isRollback ? '🎉 回滚攻克成功！已从错题本移除' : '✓ 回答正确！';
+      document.getElementById('expHeadline').className = 'font-bold text-sm text-emerald-800';
+    } else {
+      expCard.className = 'rounded-2xl border border-rose-200 bg-rose-50/70 p-4 sm:p-5 space-y-2 fade-up';
+      const uStr = q.type === 'judge' ? (item.userAns === 'T' ? '正确' : '错误') : item.userAns.join('');
+      document.getElementById('expHeadline').textContent = `✗ 回答有误（你选了 ${uStr}）`;
+      document.getElementById('expHeadline').className = 'font-bold text-sm text-rose-800';
+      if (item.rolledBackFromThis) {
+        rbNote.classList.remove('hidden');
+        document.getElementById('expRollbackText').textContent = `🔄 已触发错题回滚：本题将在 ${store.rollbackGap >= 999 ? '本组末尾' : store.rollbackGap + ' 题后'} 再次出现重练！`;
+      }
+    }
+    document.getElementById('expCorrectTag').textContent = `答案：${formatCorrectAns(q)}`;
+    document.getElementById('expBody').textContent = q.exp;
+  } else {
+    expCard.classList.add('hidden');
+  }
+
+  // Prev / Next / Submit buttons (desktop & mobile)
+  const isFirst = session.idx === 0;
+  const isLast = session.idx === total - 1;
+  document.getElementById('deskPrevBtn').disabled = isFirst;
+  document.getElementById('mobPrevBtn').disabled = isFirst;
+
+  const showSubmit = session.mode === 'exam' && !session.submitted;
+  document.getElementById('deskNextBtn').classList.toggle('hidden', showSubmit && isLast);
+  document.getElementById('deskSubmitExamBtn').classList.toggle('hidden', !showSubmit);
+  document.getElementById('mobNextBtn').classList.toggle('hidden', showSubmit && isLast);
+  document.getElementById('mobSubmitExamBtn').classList.toggle('hidden', !showSubmit);
+
+  const nextLabel = isLast ? (session.mode === 'study' ? '完成背题' : '查看成绩') : '下一题 →';
+  document.getElementById('deskNextBtn').textContent = nextLabel;
+  document.getElementById('mobNextBtn').textContent = nextLabel;
+
+  renderSidebars(pendingRollbacks);
+}
+
+function handleChoice(val) {
+  const item = session.queue[session.idx];
+  const q = item.q;
+  if (q.type === 'judge') {
+    item.userAns = val;
+    if (session.mode === 'practice') gradeCurrentItem();
+    else renderQuiz();
+  } else if (q.type === 'single') {
+    item.userAns = [val];
+    if (session.mode === 'practice') gradeCurrentItem();
+    else renderQuiz();
+  } else {
+    // multi toggle
+    if (item.userAns.includes(val)) {
+      item.userAns = item.userAns.filter(x => x !== val);
+    } else {
+      item.userAns = [...item.userAns, val].sort();
+    }
+    renderQuiz();
+  }
+}
+
+function gradeCurrentItem() {
+  const item = session.queue[session.idx];
+  const q = item.q;
+  if (q.type === 'multi' && item.userAns.length === 0) {
+    showToast('请至少选择一个选项再提交');
+    return;
+  }
+  item.graded = true;
+  item.correct = checkIsCorrect(q, item.userAns);
+  recordGlobal(q, item.correct, item.isRollback);
+
+  if (!item.correct && store.rollbackOn && session.mode === 'practice') {
+    const dist = scheduleRollback(item, false);
+    if (dist !== null) {
+      showToast(`🔄 已触发错题回滚：${dist} 题后将再次出现！`);
+    }
+  }
+  renderQuiz();
+}
+
+function renderSidebars(pendingRollbacks) {
+  // Desktop rollback list
+  document.getElementById('deskRollbackCount').textContent = `${pendingRollbacks.length} 题`;
+  const rbList = document.getElementById('deskRollbackList');
+  if (pendingRollbacks.length === 0) {
+    rbList.innerHTML = `<div class="text-slate-400 py-2 text-center">暂无排队回滚的错题，继续保持！</div>`;
+  } else {
+    rbList.innerHTML = pendingRollbacks.map((it) => {
+      const targetIdx = session.queue.indexOf(it);
+      const dist = targetIdx - session.idx;
+      return `
+        <button type="button" data-jump="${targetIdx}" class="rb-jump w-full text-left px-2.5 py-2 rounded-xl bg-amber-50/80 hover:bg-amber-100 border border-amber-200/80 flex items-center justify-between gap-2 transition">
+          <span class="truncate text-amber-950 font-medium">${escapeHtml(it.q.stem.slice(0, 22))}...</span>
+          <span class="font-mono-num text-[11px] font-bold text-amber-700 shrink-0">${dist}题后</span>
+        </button>`;
+    }).join('');
+    rbList.querySelectorAll('.rb-jump').forEach(b => {
+      b.addEventListener('click', () => { session.idx = Number(b.dataset.jump); renderQuiz(); });
+    });
+  }
+
+  // Mobile rollback info
+  document.getElementById('mobRollbackInfo').textContent = pendingRollbacks.length
+    ? `🔄 当前队列还有 ${pendingRollbacks.length} 道错题等待回滚重练（标黄底色的题号即为回滚题）。`
+    : '✓ 当前暂无等待回滚的错题。';
+
+  // Build sheet buttons for both desktop and mobile
+  const buildSheetHtml = () => session.queue.map((it, i) => {
+    let cls = 'sheet-btn h-9 rounded-xl text-xs font-mono-num font-bold border transition relative ';
+    if (i === session.idx) cls += 'ring-2 ring-indigo-500 ring-offset-1 ';
+    if (it.graded || session.submitted) {
+      if (it.correct === true) cls += 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      else if (it.correct === false) cls += 'bg-rose-100 text-rose-800 border-rose-300';
+      else cls += 'bg-slate-100 text-slate-500 border-slate-200';
+    } else if (it.isRollback) {
+      cls += 'bg-amber-100 text-amber-900 border-amber-300';
+    } else if (it.userAns && (!Array.isArray(it.userAns) || it.userAns.length > 0)) {
+      cls += 'bg-indigo-100 text-indigo-800 border-indigo-300';
+    } else {
+      cls += 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50';
+    }
+    return `<button type="button" data-sidx="${i}" class="${cls}">${i + 1}${it.isRollback ? '↺' : ''}</button>`;
+  }).join('');
+
+  const html = buildSheetHtml();
+  ['deskSheetGrid', 'mobSheetGrid'].forEach(id => {
+    const el = document.getElementById(id);
+    el.innerHTML = html;
+    el.querySelectorAll('.sheet-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        session.idx = Number(b.dataset.sidx);
+        document.getElementById('mobSheetModal').classList.add('hidden');
+        renderQuiz();
+      });
+    });
+  });
+}
+
+function finishSession() {
+  if (session.mode === 'exam' && !session.submitted) {
+    session.submitted = true;
+    session.queue.forEach(it => {
+      it.graded = true;
+      it.correct = checkIsCorrect(it.q, it.userAns);
+      if (it.userAns && (!Array.isArray(it.userAns) || it.userAns.length > 0)) {
+        recordGlobal(it.q, it.correct, it.isRollback);
+      }
+    });
+  }
+  // Unique question summary based on latest attempt
+  const latestByQid = {};
+  session.queue.forEach(it => { latestByQid[it.q.id] = it; });
+  const uniqueItems = Object.values(latestByQid);
+  const rightCount = uniqueItems.filter(it => it.correct === true).length;
+  const wrongItems = uniqueItems.filter(it => it.correct !== true);
+  const rollbacksDone = session.queue.filter(it => it.isRollback && it.correct === true).length;
+  const pct = uniqueItems.length ? Math.round((rightCount / uniqueItems.length) * 100) : 0;
+
+  document.getElementById('quizView').classList.add('hidden');
+  document.getElementById('resultView').classList.remove('hidden');
+  document.getElementById('resTitle').textContent = session.title;
+  document.getElementById('resPct').textContent = pct + '%';
+  document.getElementById('resSub').textContent = `共 ${uniqueItems.length} 道原题，最终答对 ${rightCount} 题，仍错/未答 ${wrongItems.length} 题` +
+    (rollbacksDone > 0 ? `（其中通过回滚攻克 ${rollbacksDone} 题！）` : '');
+
+  document.getElementById('resRetryWrongBtn').classList.toggle('hidden', wrongItems.length === 0);
+
+  const list = document.getElementById('resWrongList');
+  if (wrongItems.length === 0) {
+    list.innerHTML = `<div class="text-center py-6 text-emerald-700 font-bold">🎉 全部通关！所有题目（含回滚错题）均已拿下！</div>`;
+  } else {
+    list.innerHTML = `<div class="text-xs font-bold text-slate-500 mb-2">错题/未答题解析汇总（${wrongItems.length} 题）：</div>` +
+      wrongItems.map(it => `
+        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 space-y-1.5 text-xs sm:text-sm">
+          <div class="font-semibold text-slate-900">${escapeHtml(it.q.stem)}</div>
+          <div class="text-emerald-700 font-bold text-xs">正确答案：${formatCorrectAns(it.q)}</div>
+          <div class="text-slate-600 text-xs leading-relaxed">${escapeHtml(it.q.exp)}</div>
+        </div>
+      `).join('');
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ==================== EVENTS ====================
+document.getElementById('brandBtn').addEventListener('click', renderHome);
+document.getElementById('backHomeBtn').addEventListener('click', renderHome);
+document.getElementById('resHomeBtn').addEventListener('click', renderHome);
+
+document.getElementById('rollbackToggle').addEventListener('change', e => {
+  store.rollbackOn = e.target.checked;
+  saveStore();
+  renderHome();
+});
+document.getElementById('rollbackGapSelect').addEventListener('change', e => {
+  store.rollbackGap = Number(e.target.value);
+  saveStore();
+});
+document.getElementById('shuffleToggle').addEventListener('change', e => {
+  store.shuffle = e.target.checked;
+  saveStore();
+});
+
+document.querySelectorAll('.mode-btn').forEach(b => {
+  b.addEventListener('click', () => { store.mode = b.dataset.mode; saveStore(); renderHome(); });
+});
+document.querySelectorAll('.qtype-btn').forEach(b => {
+  b.addEventListener('click', () => { store.qtype = b.dataset.qtype; saveStore(); renderHome(); });
+});
+
+document.getElementById('startAllBtn').addEventListener('click', () => {
+  startSession('全库顺序刷题', filterByType(DB.questions));
+});
+document.getElementById('mock20Btn').addEventListener('click', () => {
+  const pool = [...filterByType(DB.questions)];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  startSession('全库随机 20 题测验', pool.slice(0, 20));
+});
+
+document.getElementById('topWrongBtn').addEventListener('click', () => {
+  const list = DB.questions.filter(q => store.wrong.includes(q.id));
+  if (!list.length) { showToast('错题本是空的，太棒啦！'); return; }
+  startSession(`错题本专项回滚（${list.length} 题）`, list);
+});
+document.getElementById('topFavBtn').addEventListener('click', () => {
+  const list = DB.questions.filter(q => store.favs.includes(q.id));
+  if (!list.length) { showToast('还没有收藏题目，刷题时点右上角 ☆ 即可收藏'); return; }
+  startSession(`收藏夹复习（${list.length} 题）`, list);
+});
+
+// Search
+let searchMatches = [];
+document.getElementById('searchInput').addEventListener('input', e => {
+  const kw = e.target.value.trim().toLowerCase();
+  const panel = document.getElementById('searchPanel');
+  if (!kw) { panel.classList.add('hidden'); return; }
+  searchMatches = filterByType(DB.questions).filter(q =>
+    q.stem.toLowerCase().includes(kw) ||
+    q.exp.toLowerCase().includes(kw) ||
+    (q.opts && Object.values(q.opts).some(v => v.toLowerCase().includes(kw)))
+  );
+  panel.classList.remove('hidden');
+  document.getElementById('searchTitle').textContent = `找到 ${searchMatches.length} 道包含“${e.target.value.trim()}”的题目`;
+  const list = document.getElementById('searchList');
+  list.innerHTML = searchMatches.length
+    ? searchMatches.slice(0, 12).map(q => `
+      <div class="p-2.5 rounded-xl bg-slate-50 hover:bg-indigo-50 cursor-pointer flex items-center justify-between gap-2" data-sqid="${q.id}">
+        <span class="truncate text-slate-800">${escapeHtml(q.stem)}</span>
+        <span class="text-[11px] font-semibold text-indigo-700 shrink-0">${chMap[q.ch].short}</span>
+      </div>`).join('')
+    : `<div class="text-slate-400 py-2">没有匹配题目</div>`;
+  list.querySelectorAll('[data-sqid]').forEach(el => {
+    el.addEventListener('click', () => {
+      const target = searchMatches.find(x => x.id === Number(el.dataset.sqid));
+      if (target) startSession(`搜索：${e.target.value.trim()}`, [target]);
+    });
+  });
+});
+document.getElementById('quizSearchBtn').addEventListener('click', () => {
+  startSession(`搜索专项：${document.getElementById('searchInput').value.trim()}`, searchMatches);
+});
+
+// Quiz Controls
+document.getElementById('submitMultiBtn').addEventListener('click', gradeCurrentItem);
+
+const goPrev = () => { if (session.idx > 0) { session.idx--; renderQuiz(); } };
+const goNext = () => {
+  if (session.idx < session.queue.length - 1) { session.idx++; renderQuiz(); }
+  else finishSession();
+};
+const manualRollback = () => {
+  const item = session.queue[session.idx];
+  const dist = scheduleRollback(item, true);
+  document.getElementById('mobSheetModal').classList.add('hidden');
+  showToast(`🔄 已手动加入回滚队列：${dist} 题后再次练习`);
+  renderQuiz();
+};
+
+document.getElementById('deskPrevBtn').addEventListener('click', goPrev);
+document.getElementById('mobPrevBtn').addEventListener('click', goPrev);
+document.getElementById('deskNextBtn').addEventListener('click', goNext);
+document.getElementById('mobNextBtn').addEventListener('click', goNext);
+document.getElementById('deskSubmitExamBtn').addEventListener('click', finishSession);
+document.getElementById('mobSubmitExamBtn').addEventListener('click', finishSession);
+document.getElementById('deskManualRollbackBtn').addEventListener('click', manualRollback);
+document.getElementById('mobManualRollbackBtn').addEventListener('click', manualRollback);
+
+document.getElementById('favBtn').addEventListener('click', () => {
+  const q = session.queue[session.idx].q;
+  if (store.favs.includes(q.id)) {
+    store.favs = store.favs.filter(id => id !== q.id);
+    showToast('已取消收藏');
+  } else {
+    store.favs.push(q.id);
+    showToast('已加入收藏夹');
+  }
+  saveStore();
+  document.getElementById('topFavCount').textContent = store.favs.length;
+  renderQuiz();
+});
+
+// Mobile Sheet Modal
+document.getElementById('mobSheetBtn').addEventListener('click', () => {
+  document.getElementById('mobSheetModal').classList.remove('hidden');
+});
+document.getElementById('closeMobSheetBtn').addEventListener('click', () => {
+  document.getElementById('mobSheetModal').classList.add('hidden');
+});
+document.getElementById('mobSheetModal').addEventListener('click', e => {
+  if (e.target.id === 'mobSheetModal') document.getElementById('mobSheetModal').classList.add('hidden');
+});
+
+// Result Retry
+document.getElementById('resRetryWrongBtn').addEventListener('click', () => {
+  const latest = {};
+  session.queue.forEach(it => { latest[it.q.id] = it; });
+  const wrongQs = Object.values(latest).filter(it => it.correct !== true).map(it => it.q);
+  startSession(session.title + ' · 错题回滚', wrongQs);
+});
+document.getElementById('resRetryAllBtn').addEventListener('click', () => {
+  startSession(session.title, session.originQuestions);
+});
+
+// Reset Modal
+document.getElementById('openResetBtn').addEventListener('click', () => document.getElementById('resetModal').classList.remove('hidden'));
+document.getElementById('cancelResetBtn').addEventListener('click', () => document.getElementById('resetModal').classList.add('hidden'));
+document.getElementById('confirmResetBtn').addEventListener('click', () => {
+  store.answered = {}; store.wrong = []; store.favs = []; store.rollbackFixed = 0;
+  saveStore();
+  document.getElementById('resetModal').classList.add('hidden');
+  showToast('已重置所有刷题记录');
+  renderHome();
+});
+
+// Keyboard shortcuts (Desktop)
+document.addEventListener('keydown', e => {
+  if (document.getElementById('quizView').classList.contains('hidden')) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const item = session.queue[session.idx];
+  const q = item.q;
+  const locked = (session.mode === 'practice' && item.graded) || session.submitted || session.mode === 'study';
+  const k = e.key.toUpperCase();
+
+  if (e.key === 'ArrowLeft') goPrev();
+  else if (e.key === 'ArrowRight') goNext();
+  else if (e.key === 'Enter' && q.type === 'multi' && !locked && session.mode === 'practice') gradeCurrentItem();
+  else if (!locked) {
+    if (q.type === 'judge' && (k === 'T' || k === '1')) handleChoice('T');
+    else if (q.type === 'judge' && (k === 'F' || k === '2')) handleChoice('F');
+    else if (q.type !== 'judge' && q.opts && q.opts[k]) handleChoice(k);
+  }
+});
+
+loadStore();
+renderHome();
+</script>
+</body>
+</html>
